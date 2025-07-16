@@ -3,6 +3,7 @@ using UnityEngine.AI;
 
 public class EnemyFSM : MonoBehaviour
 {
+    public static int AlertActiveCount = 0;
     [Header("Referencias")]
     public Transform[] patrolPoints;
     public Transform player;
@@ -156,7 +157,7 @@ public class EnemyFSM : MonoBehaviour
         {
             Debug.Log("Estado: ATAQUE");
             lostTimer = 0f;
-
+            AlertActiveCount++;
             // Posibles mejoras:
             // - Activar animación de correr o disparar
             // - Activar alarma (Audio Source / luz)
@@ -183,6 +184,7 @@ public class EnemyFSM : MonoBehaviour
 
         public void ExitState(EnemyFSM enemy)
         {
+            AlertActiveCount--;
             // enemy.animator.SetBool("IsRunning", false);
         }
     }

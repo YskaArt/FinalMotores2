@@ -112,6 +112,22 @@ public class PlayerMovement : MonoBehaviour
         }
     }
 
+    private void OnTriggerStay(Collider other)
+    {
+        if (other.CompareTag("Objective") && Keyboard.current.eKey.wasPressedThisFrame)
+        {
+            GameManager.Instance.TriggerMissionComplete();
+        }
+    }
+
+    private void OnCollisionEnter(Collision collision)
+    {
+        if (collision.gameObject.CompareTag("Enemy"))
+        {
+            GameManager.Instance.TriggerGameOver();
+        }
+    }
+
     private void OnDrawGizmosSelected()
     {
         if (groundCheck != null)
