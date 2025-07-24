@@ -15,17 +15,28 @@ public class PlayerMovement : MonoBehaviour
 
     [Header("Movement Settings")]
     [SerializeField] private float moveSpeed;
-    [SerializeField] private float depthSpeed; 
+    [SerializeField] private float depthSpeed;
     [SerializeField] private float jumpForce;
     [SerializeField] private Transform groundCheck;
     [SerializeField] private LayerMask groundLayer;
 
+    [Header("Jump Physics")]
+    [SerializeField] private float fallMultiplier = 2.5f;
+    [SerializeField] private float lowJumpMultiplier = 2f;
+
+    [Header("PostProcessing")]
     [SerializeField] private Volume globalVolume;
     private Vignette vignette;
+
+    private Collider playerCollider;
+    private Animator animator;
+
     private void Awake()
     {
         inputActions = new PlayerInputActions();
         rb = GetComponent<Rigidbody>();
+        animator = GetComponent<Animator>();
+        playerCollider = GetComponent<Collider>();
 
         inputActions.Player.Move.performed += ctx => moveInput = ctx.ReadValue<Vector2>();
         inputActions.Player.Move.canceled += _ => moveInput = Vector2.zero;
@@ -33,7 +44,6 @@ public class PlayerMovement : MonoBehaviour
         inputActions.Player.Jump.performed += _ => TryJump();
         inputActions.Player.Stealth.performed += _ => ToggleStealth();
 
-        // Buscar el efecto Vignette dentro del Volume
         if (globalVolume != null && globalVolume.profile.TryGet(out vignette))
         {
             vignette.intensity.Override(0.1f);
@@ -50,7 +60,26 @@ public class PlayerMovement : MonoBehaviour
         velocity.x = -moveInput.y * depthSpeed;
         rb.linearVelocity = new Vector3(velocity.x, rb.linearVelocity.y, velocity.z);
 
-      
+        if (rb.linearVelocity.y < 0)
+        {
+            rb.linearVelocity += Vector3.up * Physics.gravity.y * (fallMultiplier - 1) * Time.fixedDeltaTime;
+        }
+        else if (rb.linearVelocity.y > 0 && !Keyboard.current.spaceKey.isPressed)
+        {
+            rb.linearVelocity += Vector3.up * Physics.gravity.y * (lowJumpMultiplier - 1) * Time.fixedDeltaTime;
+        }
+
+        Vector3 moveDirection = new Vector3(-moveInput.y, 0, moveInput.x);
+        if (moveDirection.sqrMagnitude > 0.01f)
+        {
+            float targetYRotation = Mathf.Atan2(moveDirection.x, moveDirection.z) * Mathf.Rad2Deg;
+            targetYRotation -= 180f;
+            Quaternion targetRotation = Quaternion.Euler(0, targetYRotation, 0);
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, 10f * Time.fixedDeltaTime);
+        }
+
+        // Actualizar animación de caminar
+        animator.SetBool("IsWalking", moveInput.sqrMagnitude > 0.01f);
     }
 
     private void TryJump()
@@ -59,6 +88,9 @@ public class PlayerMovement : MonoBehaviour
         {
             rb.linearVelocity = new Vector3(rb.linearVelocity.x, jumpForce, rb.linearVelocity.z);
             Debug.Log("Salto ejecutado");
+
+            // Activar animación de salto
+            animator.SetTrigger("Jump");
         }
     }
 
@@ -73,14 +105,16 @@ public class PlayerMovement : MonoBehaviour
         {
             isStealth = !isStealth;
             Debug.Log("Sigilo: " + isStealth);
+
             if (vignette != null)
             {
                 float intensity = isStealth ? 0.7f : 0.1f;
                 vignette.intensity.Override(intensity);
             }
+
             foreach (EnemyFSM enemy in FindObjectsByType<EnemyFSM>(FindObjectsSortMode.None))
             {
-                enemy.SetPlayerStealth(true);
+                enemy.SetPlayerStealth(isStealth);
             }
         }
     }
@@ -90,7 +124,6 @@ public class PlayerMovement : MonoBehaviour
         if (other.CompareTag("StealthZone"))
         {
             isInStealthZone = true;
-           
         }
     }
 
@@ -105,6 +138,7 @@ public class PlayerMovement : MonoBehaviour
             {
                 vignette.intensity.Override(0.1f);
             }
+
             foreach (EnemyFSM enemy in FindObjectsByType<EnemyFSM>(FindObjectsSortMode.None))
             {
                 enemy.SetPlayerStealth(false);
