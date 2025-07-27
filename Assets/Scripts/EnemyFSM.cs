@@ -7,41 +7,46 @@ public class EnemyFSM : MonoBehaviour
     {
         Patrol, Alert, Attack
     }
-    public State currentState;
 
+    [Header("Patrol")]
+    public Transform[] patrolPoints;
+    private int currentPatrolIndex = 0;
+    private float waitTimer = 0f;
+    [SerializeField] private float waitTime = 2f;
+
+    [Header("Vision")]
+    [SerializeField] private Transform eye;
+    [SerializeField] private float visionRangeFar = 10f;
+    [SerializeField] private float visionRangeClose = 5f;
+    [SerializeField] private float visionAngle = 90f;
+    [SerializeField] private float visionHeight = 2f;
+    [SerializeField] private LayerMask visionMask;
+    [SerializeField] private bool showVision = true;
+
+    [Header("Timings")]
+    [SerializeField] private float timeToAttack = 3f;
+    [SerializeField] private float alertDecayTime = 5f;
+
+    [Header("UI State Indicators")]
+    [SerializeField] private GameObject patrolIndicator;
+    [SerializeField] private GameObject alertIndicator;
+    [SerializeField] private GameObject attackIndicator;
+
+    private State currentState;
     private NavMeshAgent agent;
     private Animator animator;
     private Transform player;
 
-    public Transform[] patrolPoints;
-    private int currentPatrolIndex = 0;
-
     private float alertTimer = 0f;
-    private float timeToAttack = 3f;
-
-    private bool canSeePlayer = false;
+    private float postAttackTimer = 0f;
+    private float lostSightTimer = 0f;
+    private bool isWaiting = false;
+   
     private bool playerInStealth = false;
 
     public static int AlertActiveCount = 0;
 
-    [Header("Vision Settings")]
-    [SerializeField] private Transform eye; // punto de origen de la visión
-    [SerializeField] private float visionRange = 10f; // distancia de visión
-    [SerializeField] private float visionAngle = 90f; // ángulo en grados
-    [SerializeField] private float visionHeight = 2f; // altura del cilindro de visión
-    [SerializeField] private LayerMask visionMask;
-
-    [SerializeField] private bool showVision = true; // si se debe mostrar la visión en modo juego
-
-    private bool isWaiting = false;
-    [SerializeField] private float waitTime = 2f; // Tiempo que el enemigo espera en Idle al llegar a un punto
-    private float waitTimer = 0f;
-
-    [Header("UI State Indicators")] // Nuevo encabezado para las imágenes
-    [SerializeField] private GameObject patrolIndicator; // Imagen para el estado Patrulla
-    [SerializeField] private GameObject alertIndicator;  // Imagen para el estado Alerta
-    [SerializeField] private GameObject attackIndicator; // Imagen para el estado Ataque
-
+    private bool returningFromAlert = false; // NUEVO: si está volviendo de Alert a Patrol (punto lejano)
 
     private void Start()
     {
@@ -49,50 +54,55 @@ public class EnemyFSM : MonoBehaviour
         animator = GetComponent<Animator>();
         player = GameObject.FindGameObjectWithTag("Player").transform;
 
-        GoToNextPatrolPoint(); // Inicia el patrullaje
-        UpdateStateIndicators(); // Llama esto al inicio para asegurar el estado visual correcto
+        GoToNextPatrolPoint();
+        UpdateStateIndicators();
     }
 
     private void Update()
     {
         switch (currentState)
         {
-            case State.Patrol:
-                Patrol();
-                break;
-            case State.Alert:
-                Alert();
-                break;
-            case State.Attack:
-                Attack();
-                break;
+            case State.Patrol: HandlePatrol(); break;
+            case State.Alert: HandleAlert(); break;
+            case State.Attack: HandleAttack(); break;
         }
 
-        // Si el agente está en movimiento, activamos IsWalking, de lo contrario, desactivamos.
-        // Esto se aplica globalmente para el movimiento.
-        // AlertWalk se maneja en los estados Alert/Attack.
-        if (currentState == State.Patrol) // Solo controlamos IsWalking aquí si estamos patrullando
-        {
-            animator.SetBool("IsWalking", agent.velocity.magnitude > 0.1f);
-        }
-        else
-        { // En alerta o ataque, IsWalking siempre debería ser true si se mueve
-            animator.SetBool("IsWalking", agent.velocity.magnitude > 0.1f); // O si el agente está en movimiento
-        }
+        animator.SetBool("IsWalking", agent.velocity.magnitude > 0.1f);
     }
 
-    private void Patrol()
+    private void HandlePatrol()
     {
-        animator.SetBool("AlertWalk", false); // Aseguramos que no esté en animación de alerta
+        // Si está volviendo desde alerta al punto lejano, mantengo alerta visual
+        if (returningFromAlert)
+        {
+            animator.SetBool("AlertWalk", true);
+            // Cuando llegue, desactivo este modo y sigo patrullando normal
+            if (!agent.pathPending && agent.remainingDistance < 0.5f)
+            {
+                returningFromAlert = false;
+                animator.SetBool("AlertWalk", false);
+                waitTimer = 0f;
+                isWaiting = false;
+                GoToNextPatrolPoint();
+            }
+            return; // Mientras vuelve, no sigue la lógica normal de patrulla
+        }
+        else
+        {
+            animator.SetBool("AlertWalk", false);
+        }
+
+        if (CanSeePlayer(out float _))
+        {
+            ChangeState(State.Alert);
+            return;
+        }
 
         if (agent.remainingDistance < 0.5f && !isWaiting)
         {
-            // El enemigo ha llegado al punto de patrulla
             isWaiting = true;
-            animator.SetBool("IsWalking", false); // Detiene la animación de caminar
-            animator.SetTrigger("StopWalking"); // Activa el trigger para la animación de detenerse
-            // No necesitamos un temporizador aquí para Idle directamente,
-            // la lógica de espera ya se encarga de la duración total.
+            waitTimer = 0f;
+            animator.SetTrigger("StopWalking");
         }
 
         if (isWaiting)
@@ -100,134 +110,140 @@ public class EnemyFSM : MonoBehaviour
             waitTimer += Time.deltaTime;
             if (waitTimer >= waitTime)
             {
-                // El tiempo de espera ha terminado, procede al siguiente punto
                 isWaiting = false;
-                waitTimer = 0f;
                 GoToNextPatrolPoint();
-                animator.SetBool("IsWalking", true); // Reanuda la animación de caminar
             }
-            // Mientras espera, la animación de Idle se encargará por sí misma si "StopWalking" la transiciona
-            // El SetBool("IsWalking", false) ya se encargó de la transición a Idle
-            return;
-        }
-
-        if (CanSeePlayer())
-        {
-            ChangeState(State.Alert);
         }
     }
 
-    private void Alert()
+    private void HandleAlert()
     {
-        animator.SetBool("AlertWalk", true); // Activa la animación de alerta/caminar rápido
-        animator.SetBool("IsWalking", true); // Asegura que también esté caminando
-
-        if (!CanSeePlayer() && !playerInStealth) // Si pierde de vista al jugador y no está en sigilo
+        animator.SetBool("AlertWalk", true);
+        animator.SetBool("IsChasing", false);
+        if (CanSeePlayer(out float distance))
         {
-            ChangeState(State.Patrol);
+            lostSightTimer = 0f;
+            agent.SetDestination(player.position);
+            alertTimer += Time.deltaTime;
+
+            if (distance <= visionRangeClose || alertTimer >= timeToAttack)
+            {
+                ChangeState(State.Attack);
+            }
+        }
+        else
+        {
+            lostSightTimer += Time.deltaTime;
+
+            if (agent.remainingDistance < 0.5f)
+                animator.SetBool("IsWalking", false);
+
+            if (lostSightTimer >= alertDecayTime)
+            {
+                ChangeState(State.Patrol);
+            }
+        }
+    }
+
+    private void HandleAttack()
+    {
+        animator.SetBool("AlertWalk", false);
+        animator.SetBool("IsChasing", true);
+
+        if (!CanSeePlayer(out float _))
+        {
+            postAttackTimer += Time.deltaTime;
+            if (postAttackTimer >= alertDecayTime)
+            {
+                ChangeState(State.Alert);
+            }
             return;
         }
-        else if (!CanSeePlayer() && playerInStealth) // Si pierde de vista al jugador y está en sigilo
-        {
-            ChangeState(State.Patrol);
-            return;
-        }
 
+        postAttackTimer = 0f;
         agent.SetDestination(player.position);
 
-        alertTimer += Time.deltaTime;
-        if (alertTimer >= timeToAttack)
-        {
-            ChangeState(State.Attack);
-        }
-    }
-
-    private void Attack()
-    {
-        animator.SetBool("AlertWalk", false); // El ataque puede tener su propia animación, o solo IsWalking
-        animator.SetBool("IsWalking", true); // Asegura que el enemigo se mueva si persigue
-
-        if (!CanSeePlayer()) // Si pierde de vista al jugador, vuelve a Alerta (o Patrulla si la lógica lo permite)
-        {
-            ChangeState(State.Alert); // O ChangeState(State.Patrol); si quieres que sea menos persistente
-            return;
-        }
-
-        agent.SetDestination(player.position);
-        // Aquí irían otras acciones ofensivas o animaciones específicas (por ejemplo, un trigger de "AttackAnimation")
-    }
-
-    private void GoToNextPatrolPoint()
-    {
-        if (patrolPoints.Length == 0) return;
-        agent.destination = patrolPoints[currentPatrolIndex].position;
-        currentPatrolIndex = (currentPatrolIndex + 1) % patrolPoints.Length;
+      
     }
 
     private void ChangeState(State newState)
     {
-        if (currentState == newState) return; // Evita cambiar al mismo estado repetidamente
+        if (currentState == newState) return;
 
-        Debug.Log($"Enemigo {gameObject.name}: Cambio de estado de {currentState} a {newState}");
-
-        if (currentState == State.Attack && newState != State.Attack)
-        {
-            AlertActiveCount--;
-        }
-
-        if (newState == State.Attack && currentState != State.Attack)
+        if (currentState == State.Attack) AlertActiveCount--;
+        if (newState == State.Attack)
         {
             AlertActiveCount++;
             GameManager.Instance.IncreaseAlertLevel();
         }
 
+        // Cuando pasa de Alert a Patrol, activar flag para ir al punto más lejano
+        if (currentState == State.Alert && newState == State.Patrol)
+        {
+            returningFromAlert = true;
+
+            // Busco el punto de patrulla más lejano
+            int farthestIndex = 0;
+            float maxDistance = 0f;
+            for (int i = 0; i < patrolPoints.Length; i++)
+            {
+                float dist = Vector3.Distance(transform.position, patrolPoints[i].position);
+                if (dist > maxDistance)
+                {
+                    maxDistance = dist;
+                    farthestIndex = i;
+                }
+            }
+
+            GoToNextPatrolPoint(farthestIndex);
+        }
+        else
+        {
+            returningFromAlert = false;
+        }
+
         currentState = newState;
         alertTimer = 0f;
-        isWaiting = false; // Reset waiting state on state change
-        waitTimer = 0f;    // Reset wait timer
+        postAttackTimer = 0f;
+        lostSightTimer = 0f;
+        isWaiting = false;
+        waitTimer = 0f;
 
         UpdateStateIndicators();
     }
 
-    private bool CanSeePlayer()
+    private void GoToNextPatrolPoint(int forcedIndex = -1)
     {
+        if (patrolPoints.Length == 0) return;
+
+        if (forcedIndex >= 0 && forcedIndex < patrolPoints.Length)
+        {
+            currentPatrolIndex = forcedIndex;
+        }
+
+        agent.destination = patrolPoints[currentPatrolIndex].position;
+        currentPatrolIndex = (currentPatrolIndex + 1) % patrolPoints.Length;
+    }
+
+    private bool CanSeePlayer(out float distance)
+    {
+        distance = 0f;
         if (player == null) return false;
 
-        Vector3 direction = player.position - eye.position; // Usar eye.position como origen
-        float distanceToPlayer = direction.magnitude;
+        Vector3 dir = player.position - eye.position;
+        distance = dir.magnitude;
+        if (distance > visionRangeFar) return false;
 
-        if (distanceToPlayer > visionRange)
-        {
-            canSeePlayer = false;
-            return false;
-        }
+        float angle = Vector3.Angle(eye.forward, dir);
+        if (angle > visionAngle / 2f) return false;
 
-        float angle = Vector3.Angle(eye.forward, direction); // Usar eye.forward para el ángulo de visión
-        if (angle > visionAngle / 2f)
-        {
-            canSeePlayer = false;
-            return false;
-        }
-
-        // Raycast para comprobar obstáculos y sigilo
-        if (Physics.Raycast(eye.position, direction.normalized, out RaycastHit hit, visionRange, visionMask))
+        if (Physics.Raycast(eye.position, dir.normalized, out RaycastHit hit, visionRangeFar, visionMask))
         {
             if (hit.transform.CompareTag("Player"))
-            {
-                // Si el jugador está en sigilo y el enemigo NO está en estado de ataque, no lo "ve".
-                canSeePlayer = !(playerInStealth && currentState != State.Attack);
-            }
-            else
-            {
-                canSeePlayer = false; // Hay un obstáculo entre el enemigo y el jugador
-            }
-        }
-        else
-        {
-            canSeePlayer = false; // No hay nada detectado por el raycast
+                return !(playerInStealth && currentState != State.Attack);
         }
 
-        return canSeePlayer;
+        return false;
     }
 
     public void SetPlayerStealth(bool isStealth)
@@ -237,9 +253,9 @@ public class EnemyFSM : MonoBehaviour
 
     private void UpdateStateIndicators()
     {
-        if (patrolIndicator != null) patrolIndicator.SetActive(currentState == State.Patrol);
-        if (alertIndicator != null) alertIndicator.SetActive(currentState == State.Alert);
-        if (attackIndicator != null) attackIndicator.SetActive(currentState == State.Attack);
+        if (patrolIndicator) patrolIndicator.SetActive(currentState == State.Patrol);
+        if (alertIndicator) alertIndicator.SetActive(currentState == State.Alert);
+        if (attackIndicator) attackIndicator.SetActive(currentState == State.Attack);
     }
 
     private void OnDrawGizmosSelected()
@@ -248,44 +264,24 @@ public class EnemyFSM : MonoBehaviour
 
         Gizmos.color = new Color(1f, 0.5f, 0f, 0.2f);
 
-        // Se usa transform.forward aquí para dibujar el cono en la dirección del enemigo,
-        // no la dirección del eye.forward si el eye es un sub-objeto con diferente rotación local.
-        // Si eye siempre está alineado con el forward del enemigo, puedes usar eye.forward.
-        Vector3 forwardDir = eye.forward;
+        DrawVisionArc(eye.position, visionRangeFar, visionAngle);
+        DrawVisionArc(eye.position + Vector3.up * visionHeight, visionRangeFar, visionAngle);
 
-        Quaternion leftRayRotation = Quaternion.AngleAxis(-visionAngle / 2, Vector3.up);
-        Quaternion rightRayRotation = Quaternion.AngleAxis(visionAngle / 2, Vector3.up);
-        Vector3 leftRayDirection = leftRayRotation * forwardDir;
-        Vector3 rightRayDirection = rightRayRotation * forwardDir;
-
-        Vector3 basePosition = eye.position;
-        Vector3 topPosition = eye.position + Vector3.up * visionHeight;
-
-        // Dibujo de cono base (como sector de círculo)
-        Gizmos.DrawRay(basePosition, leftRayDirection * visionRange);
-        Gizmos.DrawRay(basePosition, rightRayDirection * visionRange);
-
-        // Dibujo de líneas de altura
-        Gizmos.DrawLine(basePosition + leftRayDirection * visionRange, topPosition + leftRayDirection * visionRange);
-        Gizmos.DrawLine(basePosition + rightRayDirection * visionRange, topPosition + rightRayDirection * visionRange);
-
-        // Base y techo del cilindro (aproximado)
-        DrawVisionArc(basePosition, visionRange, visionAngle);
-        DrawVisionArc(topPosition, visionRange, visionAngle);
+        Gizmos.color = new Color(1f, 0f, 0f, 0.3f);
+        Gizmos.DrawWireSphere(eye.position, visionRangeClose);
     }
 
     private void DrawVisionArc(Vector3 center, float radius, float angle)
     {
         int segments = 20;
         float step = angle / segments;
-        // La rotación inicial para el arco debe considerar la dirección 'forward' del ojo
-        Quaternion startRotation = Quaternion.AngleAxis(-angle / 2, Vector3.up);
-        Vector3 lastPoint = center + (startRotation * eye.forward) * radius;
+        Quaternion startRot = Quaternion.AngleAxis(-angle / 2, Vector3.up);
+        Vector3 lastPoint = center + (startRot * eye.forward) * radius;
 
         for (int i = 1; i <= segments; i++)
         {
-            Quaternion rotation = Quaternion.AngleAxis(-angle / 2 + step * i, Vector3.up);
-            Vector3 nextPoint = center + (rotation * eye.forward) * radius;
+            Quaternion rot = Quaternion.AngleAxis(-angle / 2 + step * i, Vector3.up);
+            Vector3 nextPoint = center + (rot * eye.forward) * radius;
             Gizmos.DrawLine(lastPoint, nextPoint);
             lastPoint = nextPoint;
         }
