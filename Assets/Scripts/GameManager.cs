@@ -17,7 +17,9 @@ public class GameManager : MonoBehaviour
     public GameObject gameOverUI;
 
     private bool isGameOver = false;
+    public bool isGameplayScene = true; // Definílo en el Inspector
 
+    
     private void Awake()
     {
         Time.timeScale = 1f;
@@ -34,7 +36,11 @@ public class GameManager : MonoBehaviour
 
     private void Start()
     {
-        
+        if (MusicManager.Instance != null)
+        {
+            MusicManager.Instance.SetSceneType(isGameplayScene);
+        }
+
         if (missionCompleteUI != null) missionCompleteUI.SetActive(false);
         if (gameOverUI != null) gameOverUI.SetActive(false);
         
@@ -45,11 +51,11 @@ public class GameManager : MonoBehaviour
     {
         if (isGameOver) return;
 
-        
+        MusicManager.Instance.UpdateAlertLevel(alertLevel);
         UpdateAlertUI();
     }
 
-    // Método modificado para recibir la cantidad a aumentar (float)
+   
     public void IncreaseAlertLevel(float amountToIncrease = 1f) // Valor por defecto de 1 si no se pasa nada
     {
         if (isGameOver) return;
@@ -62,8 +68,7 @@ public class GameManager : MonoBehaviour
             alertLevel = maxAlertLevel; // Asegura que no se exceda el máximo visualmente
             TriggerGameOver();
         }
-        // El UI se actualiza en UpdateAlertUI, que es llamado en Update, o puedes llamarlo aquí explícitamente si quieres una actualización inmediata
-        // UpdateAlertUI(); 
+        
     }
 
     private void UpdateAlertUI()
@@ -76,7 +81,7 @@ public class GameManager : MonoBehaviour
     public void TriggerGameOver()
     {
         if (isGameOver) return; // Evita que se dispare múltiples veces
-
+        SFXManager.Instance?.PlayGameOver();
         Debug.Log("Game Over! Nivel de Alerta máximo alcanzado.");
         isGameOver = true;
         if (gameOverUI != null) gameOverUI.SetActive(true);

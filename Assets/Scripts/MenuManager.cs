@@ -3,8 +3,7 @@ using UnityEngine.SceneManagement;
 
 public class MenuManager : MonoBehaviour
 {
-    [Header("UI Panels")]
-    public GameObject infoPanel;
+ 
 
     [Header("Nombre de escenas")]
     public string tutorialScene = "Tutorial";
@@ -12,11 +11,7 @@ public class MenuManager : MonoBehaviour
     public string mainMenuScene = "MainMenu";
     public string mainVictory = "Victory";
 
-    private void Start()
-    {
-        if (infoPanel != null)
-            infoPanel.SetActive(false); // Ocultar panel de información al inicio
-    }
+ 
 
     // Llama este desde el botón "Start Game"
     public void StartTutorial()
@@ -48,10 +43,6 @@ public class MenuManager : MonoBehaviour
         SceneManager.LoadScene(mainVictory);
     }
 
-    // Llama este desde el botón "Controles / Información"
-    public void ToggleInfoPanel()
-    {
-        if (infoPanel != null)
-            infoPanel.SetActive(!infoPanel.activeSelf);
-    }
+  
+   
 }

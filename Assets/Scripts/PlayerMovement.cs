@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.Rendering;
-using UnityEngine.Rendering.Universal; // Asegúrate de tener esta línea
+using UnityEngine.Rendering.Universal;
 
 public class PlayerMovement : MonoBehaviour
 {
@@ -31,10 +31,15 @@ public class PlayerMovement : MonoBehaviour
     private Collider playerCollider;
     private Animator animator;
 
-    [Header("UI Stealth Indicators")] // Nuevo encabezado para los indicadores del jugador
-    [SerializeField] private GameObject inStealthZoneIndicator; // Imagen para cuando el jugador está en una zona de sigilo
-    [SerializeField] private GameObject stealthActiveIndicator;   // Imagen para cuando el sigilo está activado
+    [Header("UI Stealth Indicators")]
+    [SerializeField] private GameObject inStealthZoneIndicator;
+    [SerializeField] private GameObject stealthActiveIndicator;
+    
 
+    [Header("Objective UI")]
+    [SerializeField] private GameObject objectiveInteractionIcon;
+
+    private bool isInObjectiveZone = false;
 
     private void Awake()
     {
@@ -49,13 +54,19 @@ public class PlayerMovement : MonoBehaviour
         inputActions.Player.Jump.performed += _ => TryJump();
         inputActions.Player.Stealth.performed += _ => ToggleStealth();
 
+        // Esta línea no funcionaba y causaba el error, por lo tanto, la eliminamos.
+        // Si tuvieras una acción de "Interact" definida en el Input Actions, la línea sería correcta.
+        // inputActions.Player.Interact.performed += _ => Interact();
+
+
         if (globalVolume != null && globalVolume.profile.TryGet(out vignette))
         {
             vignette.intensity.Override(0.1f);
         }
 
-        // Asegurarse de que los indicadores estén desactivados al inicio
         UpdateStealthIndicators();
+        // Asegurarse de que el icono de interacción del objetivo esté desactivado al inicio
+        ToggleObjectiveUI(false);
     }
 
     private void OnEnable() => inputActions.Enable();
@@ -86,7 +97,6 @@ public class PlayerMovement : MonoBehaviour
             transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, 10f * Time.fixedDeltaTime);
         }
 
-        // Actualizar animación de caminar
         animator.SetBool("IsWalking", moveInput.sqrMagnitude > 0.01f);
     }
 
@@ -96,8 +106,6 @@ public class PlayerMovement : MonoBehaviour
         {
             rb.linearVelocity = new Vector3(rb.linearVelocity.x, jumpForce, rb.linearVelocity.z);
             Debug.Log("Salto ejecutado");
-
-            // Activar animación de salto
             animator.SetTrigger("Jump");
         }
     }
@@ -120,16 +128,14 @@ public class PlayerMovement : MonoBehaviour
                 vignette.intensity.Override(intensity);
             }
 
-            // Notificar a todos los enemigos sobre el estado de sigilo del jugador
             foreach (EnemyFSM enemy in FindObjectsByType<EnemyFSM>(FindObjectsSortMode.None))
             {
                 enemy.SetPlayerStealth(isStealth);
             }
-            UpdateStealthIndicators(); // Actualiza los indicadores visuales
+            UpdateStealthIndicators();
         }
         else
         {
-            // Si el jugador intenta activar sigilo fuera de una zona, asegurarse de que no esté activo
             isStealth = false;
             if (vignette != null)
             {
@@ -139,7 +145,7 @@ public class PlayerMovement : MonoBehaviour
             {
                 enemy.SetPlayerStealth(false);
             }
-            UpdateStealthIndicators(); // Actualiza los indicadores visuales
+            UpdateStealthIndicators();
         }
     }
 
@@ -149,7 +155,13 @@ public class PlayerMovement : MonoBehaviour
         {
             isInStealthZone = true;
             Debug.Log("Entró en zona de sigilo.");
-            UpdateStealthIndicators(); // Actualiza los indicadores visuales
+            UpdateStealthIndicators();
+        }
+        if (other.CompareTag("Objective"))
+        {
+            isInObjectiveZone = true;
+            Debug.Log("Entró en zona de objetivo.");
+            ToggleObjectiveUI(true); // Muestra el icono de interacción
         }
     }
 
@@ -158,7 +170,7 @@ public class PlayerMovement : MonoBehaviour
         if (other.CompareTag("StealthZone"))
         {
             isInStealthZone = false;
-            isStealth = false; // El sigilo se desactiva al salir de la zona
+            isStealth = false;
 
             Debug.Log("Salió de zona de sigilo. Sigilo desactivado.");
 
@@ -171,7 +183,13 @@ public class PlayerMovement : MonoBehaviour
             {
                 enemy.SetPlayerStealth(false);
             }
-            UpdateStealthIndicators(); // Actualiza los indicadores visuales
+            UpdateStealthIndicators();
+        }
+        if (other.CompareTag("Objective"))
+        {
+            isInObjectiveZone = false;
+            Debug.Log("Salió de zona de objetivo.");
+            ToggleObjectiveUI(false); // Oculta el icono de interacción
         }
     }
 
@@ -179,6 +197,7 @@ public class PlayerMovement : MonoBehaviour
     {
         if (other.CompareTag("Objective") && Keyboard.current.eKey.wasPressedThisFrame)
         {
+            
             GameManager.Instance.TriggerMissionComplete();
         }
     }
@@ -191,12 +210,16 @@ public class PlayerMovement : MonoBehaviour
         }
     }
 
-    // Nuevo método para actualizar las imágenes de estado de sigilo del jugador
+    private void ToggleObjectiveUI(bool isActive)
+    {
+        if (objectiveInteractionIcon != null)
+        {
+            objectiveInteractionIcon.SetActive(isActive);
+        }
+    }
+
     private void UpdateStealthIndicators()
     {
-        // El indicador de "en zona de sigilo" solo se activa si estamos en la zona Y el sigilo no está activo (para que no se superpongan)
-        // O podrías querer que esté siempre activo si estás en la zona, y el otro encima si activas.
-        // Aquí lo haré para que solo uno esté activo a la vez para mayor claridad.
         if (inStealthZoneIndicator != null)
         {
             inStealthZoneIndicator.SetActive(isInStealthZone && !isStealth);

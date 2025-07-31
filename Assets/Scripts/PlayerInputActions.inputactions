@@ -112,6 +112,34 @@
                     "isPartOfComposite": false
                 }
             ]
+        },
+        {
+            "name": "Cinematic",
+            "id": "0cdc12ca-b2a0-437d-bdea-e22d93991e0d",
+            "actions": [
+                {
+                    "name": "New action",
+                    "type": "Button",
+                    "id": "f38131a1-9b4f-4d75-b57a-3fec60d78330",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                }
+            ],
+            "bindings": [
+                {
+                    "name": "",
+                    "id": "0bf25c56-e1f4-4bb7-9d92-8fa768056be0",
+                    "path": "",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "New action",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                }
+            ]
         }
     ],
     "controlSchemes": []
