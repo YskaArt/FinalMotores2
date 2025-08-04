@@ -15501,7 +15501,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 97e2dd192f478c444a9c380d009bf5fc, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  infoPanel: {fileID: 0}
   tutorialScene: Tutorial
   level1Scene: Level1
   mainMenuScene: MainMenu
@@ -17287,7 +17286,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   m_FontData:
-    m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
+    m_Font: {fileID: 12800000, guid: 2170300239b13e643966bb6b9eb18a32, type: 3}
     m_FontSize: 50
     m_FontStyle: 0
     m_BestFit: 0
